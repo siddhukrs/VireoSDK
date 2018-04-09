@@ -349,6 +349,7 @@
         };
 
         Module.javaScriptInvoke.jsJavaScriptInvoke = function (
+            occurencePointer,
             functionNamePointer,
             returnPointer,
             parametersPointer,
