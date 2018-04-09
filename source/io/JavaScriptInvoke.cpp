@@ -107,8 +107,7 @@ VIREO_FUNCTION_SIGNATUREV(JavaScriptInvoke, JavaScriptInvokeParamBlock)
             errorCheckingEnabled,
             &errorClusterPtr->status,
             &errorClusterPtr->code,
-            errorClusterPtr->source
-            );
+            errorClusterPtr->source);
         AddCallChainToSourceIfErrorPresent(errorClusterPtr, "JavaScriptInvoke");
     }
 #else
@@ -119,8 +118,8 @@ VIREO_FUNCTION_SIGNATUREV(JavaScriptInvoke, JavaScriptInvokeParamBlock)
 
 //------------------------------------------------------------
 DEFINE_VIREO_BEGIN(JavaScriptInvoke)
-    DEFINE_VIREO_FUNCTION(JavaScriptInvoke, "p(i(VarArgCount argumentCount) i(Occurrence occurrence) i(Boolean errorCheckingEnabled) io(ErrorCluster errorCluster)"
-        "i(String functionName) o(StaticTypeAndData returnValue) io(StaticTypeAndData functionParameters))")
+    DEFINE_VIREO_FUNCTION(JavaScriptInvoke, "p(i(VarArgCount argumentCount) i(Occurrence occurrence) i(Boolean errorCheckingEnabled)"
+        "io(ErrorCluster errorCluster) i(String functionName) o(StaticTypeAndData returnValue) io(StaticTypeAndData functionParameters))")
 DEFINE_VIREO_END()
 
 }  // namespace Vireo
