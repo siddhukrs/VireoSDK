@@ -265,8 +265,9 @@
 
         var updateReturnValue = function (
             functionNameString,
-            returnPointer,
-            returnValue,
+            returnTypeName,
+            returnValuePointer,
+            returnUserValue,
             errorStatusPointer,
             errorCodePointer,
             errorSourcePointer) {
@@ -274,7 +275,7 @@
             var newErrorCode = ERRORS.NO_ERROR.CODE;
             var newErrorSource = ERRORS.NO_ERROR.MESSAGE;
 
-            var javaScriptReturnTypeName = typeof returnValue;
+            var javaScriptReturnTypeName = typeof returnUserValue;
             var validJavaScriptReturnType =
                 (javaScriptReturnTypeName === 'number') ||
                 (javaScriptReturnTypeName === 'boolean') ||
@@ -288,43 +289,37 @@
                 return;
             }
 
-            var returnValueIndex = 0;
-            var returnTypeName = getParameterTypeString(returnPointer, returnValueIndex);
             var returnTypeMistmatch = false;
-            var returnValuePointer = undefined;
-            if (returnTypeName !== 'StaticTypeAndData') { // User doesn't want return value. We're passing '*' for the return in VIA code, we get StaticTypeAndData
-                returnValuePointer = JavaScriptInvoke_GetParameterPointer(returnPointer, 0);
-            }
             switch (returnTypeName) {
             case 'Int8':
-                returnTypeMistmatch = updateInt8ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnValue);
+                returnTypeMistmatch = updateInt8ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnUserValue);
                 break;
             case 'Int16':
-                returnTypeMistmatch = updateInt16ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnValue);
+                returnTypeMistmatch = updateInt16ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnUserValue);
                 break;
             case 'Int32':
-                returnTypeMistmatch = updateInt32ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnValue);
+                returnTypeMistmatch = updateInt32ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnUserValue);
                 break;
             case 'UInt8':
-                returnTypeMistmatch = updateUInt8ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnValue);
+                returnTypeMistmatch = updateUInt8ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnUserValue);
                 break;
             case 'UInt16':
-                returnTypeMistmatch = updateUInt16ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnValue);
+                returnTypeMistmatch = updateUInt16ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnUserValue);
                 break;
             case 'UInt32':
-                returnTypeMistmatch = updateUInt32ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnValue);
+                returnTypeMistmatch = updateUInt32ReturnValue(javaScriptReturnTypeName, returnValuePointer, returnUserValue);
                 break;
             case 'Single':
-                returnTypeMistmatch = updateSingleReturnValue(javaScriptReturnTypeName, returnValuePointer, returnValue);
+                returnTypeMistmatch = updateSingleReturnValue(javaScriptReturnTypeName, returnValuePointer, returnUserValue);
                 break;
             case 'Double':
-                returnTypeMistmatch = updateDoubleReturnValue(javaScriptReturnTypeName, returnValuePointer, returnValue);
+                returnTypeMistmatch = updateDoubleReturnValue(javaScriptReturnTypeName, returnValuePointer, returnUserValue);
                 break;
             case 'String':
-                returnTypeMistmatch = updateStringReturnValue(javaScriptReturnTypeName, returnValuePointer, returnValue);
+                returnTypeMistmatch = updateStringReturnValue(javaScriptReturnTypeName, returnValuePointer, returnUserValue);
                 break;
             case 'Boolean':
-                returnTypeMistmatch = updateBooleanReturnValue(javaScriptReturnTypeName, returnValuePointer, returnValue);
+                returnTypeMistmatch = updateBooleanReturnValue(javaScriptReturnTypeName, returnValuePointer, returnUserValue);
                 break;
             case 'StaticTypeAndData': {
                 break;
@@ -348,8 +343,27 @@
             }
         };
 
+        var generateCompletionCallback = function (occurrencePointer, functionNameString, returnTypeName, returnValuePointer, errorStatusPointer, errorCodePointer, errorSourcePointer) {
+            var completionCallbackInvoked = false;
+            return function (returnValue) {
+                if (completionCallbackInvoked === true) {
+                    throw new Error('The completion callback was invoked more than once.');
+                }
+                if (!(returnValue instanceof Error)) {
+                    updateReturnValue(functionNameString, returnTypeName, returnValuePointer, returnValue, errorStatusPointer, errorCodePointer, errorSourcePointer);
+                } else {
+                    var newErrorStatus = true;
+                    var newErrorCode = ERRORS.kNIUnableToSetReturnValueInJavaScriptInvoke.CODE;
+                    var newErrorSource = Module.coreHelpers.formatMessageWithException(ERRORS.kNIUnableToSetReturnValueInJavaScriptInvoke.MESSAGE + '\'' + functionNameString + '\'.', returnValue);
+                    Module.coreHelpers.mergeErrors(newErrorStatus, newErrorCode, newErrorSource, errorStatusPointer, errorCodePointer, errorSourcePointer);
+                }
+                completionCallbackInvoked = true;
+                Module.eggShell.setOccurrenceAsync(occurrencePointer);
+            };
+        };
+
         Module.javaScriptInvoke.jsJavaScriptInvoke = function (
-            occurencePointer,
+            occurrencePointer,
             functionNamePointer,
             returnPointer,
             parametersPointer,
@@ -371,6 +385,7 @@
                 newErrorCode = ERRORS.kNIUnsupportedParameterTypeInJavaScriptInvoke.CODE;
                 newErrorSource = Module.coreHelpers.formatMessageWithException(ERRORS.kNIUnsupportedParameterTypeInJavaScriptInvoke.MESSAGE + '\'' + functionNameString + '\'.', ex);
                 Module.coreHelpers.mergeErrors(newErrorStatus, newErrorCode, newErrorSource, errorStatusPointer, errorCodePointer, errorSourcePointer);
+                Module.eggShell.setOccurrenceAsync(occurrencePointer);
                 return;
             }
 
@@ -380,11 +395,33 @@
                 newErrorCode = ERRORS.kNIUnableToFindFunctionForJavaScriptInvoke.CODE;
                 newErrorSource = ERRORS.kNIUnableToFindFunctionForJavaScriptInvoke.MESSAGE + '\'' + functionNameString + '\'.';
                 Module.coreHelpers.mergeErrors(newErrorStatus, newErrorCode, newErrorSource, errorStatusPointer, errorCodePointer, errorSourcePointer);
+                Module.eggShell.setOccurrenceAsync(occurrencePointer);
                 return;
             }
 
-            var context = undefined;
+            var returnTypeName = getParameterTypeString(returnPointer, 0);
+            var returnValuePointer = undefined;
+            if (returnTypeName !== 'StaticTypeAndData') { // User doesn't want return value. We're passing '*' for the return in VIA code, we get StaticTypeAndData
+                returnValuePointer = JavaScriptInvoke_GetParameterPointer(returnPointer, 0);
+            }
+
+            var asyncFlag = false;
+            var generateContext = function () {
+                var completionCallbackRetrieved = false;
+                var context = {};
+                context.getCompletionCallback = function () {
+                    if (completionCallbackRetrieved === true) {
+                        throw new Error('The completion callback was retrieved more than once.');
+                    }
+                    asyncFlag = true;
+                    completionCallbackRetrieved = true;
+                    return generateCompletionCallback(occurrencePointer, functionNameString, returnTypeName, returnValuePointer, errorStatusPointer, errorCodePointer, errorSourcePointer);
+                };
+                return context;
+            };
+
             var returnValue = undefined;
+            var context = generateContext();
             try {
                 returnValue = functionToCall.apply(context, parameters);
             } catch (ex) {
@@ -392,18 +429,14 @@
                 newErrorCode = ERRORS.kNIUnableToInvokeAJavaScriptFunction.CODE;
                 newErrorSource = Module.coreHelpers.formatMessageWithException(ERRORS.kNIUnableToInvokeAJavaScriptFunction.MESSAGE + '\'' + functionNameString + '\'.', ex);
                 Module.coreHelpers.mergeErrors(newErrorStatus, newErrorCode, newErrorSource, errorStatusPointer, errorCodePointer, errorSourcePointer);
+                Module.eggShell.setOccurrenceAsync(occurrencePointer);
                 return;
             }
 
-            try {
-                updateReturnValue(functionNameString, returnPointer, returnValue, errorStatusPointer, errorCodePointer, errorSourcePointer);
-            } catch (ex) {
-                newErrorStatus = true;
-                newErrorCode = ERRORS.kNIUnableToSetReturnValueInJavaScriptInvoke.CODE;
-                newErrorSource = Module.coreHelpers.formatMessageWithException(ERRORS.kNIUnableToSetReturnValueInJavaScriptInvoke.MESSAGE + '\'' + functionNameString + '\'.', ex);
-                Module.coreHelpers.mergeErrors(newErrorStatus, newErrorCode, newErrorSource, errorStatusPointer, errorCodePointer, errorSourcePointer);
+            if (!asyncFlag) {
+                updateReturnValue(functionNameString, returnTypeName, returnValuePointer, returnValue, errorStatusPointer, errorCodePointer, errorSourcePointer);
+                Module.eggShell.setOccurrenceAsync(occurrencePointer);
             }
-
             return;
         };
     };
