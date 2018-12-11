@@ -431,7 +431,49 @@ var assignJavaScriptInvoke;
 
             var returnValue;
             try {
-                returnValue = functionToCall.apply(context, parameters);
+                returnValue = new Promise(function (resolve, reject) {
+                    var jsonParameters = JSON.parse(JSON.stringify(parameters));
+                    window.myWorker.postMessage({type: 'function', parameters: jsonParameters, name: functionName});
+                    window.myWorker.onmessage = function(e) {
+                        if(e.data.type == 'function') {
+                            resolve(e.data.value);
+                        }
+                    }
+                });
+                // returnValue = functionToCall.apply(context, parameters);
+                /*
+
+                helper.js:
+                if (window.Worker) { 
+                    window.myWorker = new Worker('worker.js');
+                    window.myWorker.postMessage({type:'scriptsload', scripts: ['add.js', 'multiply.js']});
+                    // window.myWorker.postMessage({type: 'function', parameters: ['3', '4'], name: 'multiply'});
+                }
+
+                worker.js:
+                onmessage = function(e) {
+                    if(e.data.type == 'scriptsload') {
+                    for(var i=0; i<e.data.scripts.length; i++) {
+                        importScripts(e.data.scripts[i]);
+                        postMessage({type: 'scriptsload', value: 'imported script: ' + e.data.scripts[i]});
+                    }
+                    }
+                    if (e.data.type == 'function') {
+                        console.log("worker - received function call");
+                        var op = self[e.data.name].apply(self, e.data.parameters);
+                        postMessage({type: 'function', value: op});
+                    }
+                }
+
+                main.html:
+                <script src="helper.js"></script>
+
+                add.js, multiply.js:
+                Replace window with self
+
+                WebVI:
+                Use a sequence structure with a wait, add then multiply, all in a while loop
+                */
             } catch (ex) {
                 returnValue = ex;
             }
